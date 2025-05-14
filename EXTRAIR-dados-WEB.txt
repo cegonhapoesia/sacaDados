@@ -1,0 +1,183 @@
+# EXTRATOR UNIVERSAL DE HTML (FACEBOOK, LINKEDIN, TWITTER, INSTAGRAM, ETC)
+
+Add-Type -AssemblyName "System.Windows.Forms"
+
+function Mostrar-Menu {
+    Clear-Host
+    Write-Host "==============================================="
+    Write-Host " 🔎 EXTRATOR UNIVERSAL DE HTML (FACEBOOK +++) "
+    Write-Host "==============================================="
+    Write-Host "1. Extrair JSONs válidos de todos os arquivos HTML na pasta"
+    Write-Host "2. Extrair possíveis blocos JSON (sem validar) de todos os arquivos HTML"
+    Write-Host "3. Procurar por termos no HTML (ex: nomes, emails, imagens)"
+    Write-Host "4. Extrair dados comuns (nomes, emails, datas, links, imagens)"
+    Write-Host "5. Sair"
+    Write-Host "-----------------------------------------------"
+}
+
+function Escolher-Pasta {
+    $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $folderDialog.ShowNewFolderButton = $true
+    $folderDialog.Description = "Selecione a pasta com os arquivos HTML"
+    $dialogResult = $folderDialog.ShowDialog()
+    if ($dialogResult -eq "OK") {
+        return $folderDialog.SelectedPath
+    } else {
+        Write-Host "❌ Nenhuma pasta selecionada." -ForegroundColor Red
+        return $null
+    }
+}
+
+function Extrair-JSON-Valido {
+    $folderPath = Escolher-Pasta
+    if (-Not $folderPath) { return }
+    $destino = [Environment]::GetFolderPath("MyDocuments")
+    $htmlFiles = Get-ChildItem -Path $folderPath -Filter "*.html"
+    if ($htmlFiles.Count -eq 0) {
+        Write-Host "⚠️ Nenhum arquivo HTML encontrado na pasta."
+        Pause; return
+    }
+    $contador = 1
+    foreach ($file in $htmlFiles) {
+        Write-Host "Processando: $($file.Name)"
+        $htmlContent = Get-Content -Path $file.FullName -Raw -Encoding UTF8
+        $regex = '(?s)(\{(?:[^{}]|(?<open>\{)|(?<-open>\}))*\}(?(open)(?!)))|(\[(?:[^\[\]]|(?<open>\[)|(?<-open>\]))*\](?(open)(?!)))'
+        $jsonMatches = [regex]::Matches($htmlContent, $regex)
+        foreach ($match in $jsonMatches) {
+            $json = $match.Value.Trim()
+            try {
+                $null = $json | ConvertFrom-Json -ErrorAction Stop
+                $ficheiroJson = Join-Path $destino ("json_valido_$contador.txt")
+                $json | Out-File -FilePath $ficheiroJson -Encoding UTF8
+                Write-Host "✅ JSON $contador guardado: $ficheiroJson"
+                $contador++
+            } catch {}
+        }
+    }
+    Write-Host "`n✅ Concluído! Guardados $($contador - 1) JSONs válidos."
+    Pause
+}
+
+function Extrair-JSON-Possivel {
+    $folderPath = Escolher-Pasta
+    if (-Not $folderPath) { return }
+    $destino = [Environment]::GetFolderPath("MyDocuments")
+    $htmlFiles = Get-ChildItem -Path $folderPath -Filter "*.html"
+    if ($htmlFiles.Count -eq 0) {
+        Write-Host "⚠️ Nenhum arquivo HTML encontrado na pasta."
+        Pause; return
+    }
+    $contador = 1
+    foreach ($file in $htmlFiles) {
+        Write-Host "Processando: $($file.Name)"
+        $htmlContent = Get-Content -Path $file.FullName -Raw -Encoding UTF8
+        $regex = '(?s)(\{(?:[^{}]|(?<open>\{)|(?<-open>\}))*\}(?(open)(?!)))|(\[(?:[^\[\]]|(?<open>\[)|(?<-open>\]))*\](?(open)(?!)))'
+        $jsonMatches = [regex]::Matches($htmlContent, $regex)
+        foreach ($match in $jsonMatches) {
+            $json = $match.Value.Trim()
+            $ficheiroJson = Join-Path $destino ("json_possivel_$contador.txt")
+            $json | Out-File -FilePath $ficheiroJson -Encoding UTF8
+            Write-Host "💾 JSON possível $contador guardado: $ficheiroJson"
+            $contador++
+        }
+    }
+    Write-Host "`n⚠️ Concluído! Guardados $($contador - 1) blocos que *parecem* JSON."
+    Pause
+}
+
+function Procurar-Dados {
+    $folderPath = Escolher-Pasta
+    if (-Not $folderPath) { return }
+    $htmlFiles = Get-ChildItem -Path $folderPath -Filter "*.html"
+    if ($htmlFiles.Count -eq 0) {
+        Write-Host "⚠️ Nenhum arquivo HTML encontrado na pasta."
+        Pause; return
+    }
+    $termo = Read-Host "🔍 Termo a procurar (ex: nome, email, id)"
+    $contador = 0
+    foreach ($file in $htmlFiles) {
+        Write-Host "Procurando em: $($file.Name)"
+        $htmlContent = Get-Content -Path $file.FullName -Raw -Encoding UTF8
+        $encontrados = Select-String -InputObject $htmlContent -Pattern $termo -AllMatches
+        if ($encontrados.Count -gt 0) {
+            Write-Host "`n🟢 Resultados no ficheiro $($file.Name):"
+            $encontrados | ForEach-Object { Write-Host $_.Line }
+            $contador++
+        }
+    }
+    if ($contador -eq 0) {
+        Write-Host "⚠️ Nenhum resultado encontrado para '$termo'."
+    }
+    Pause
+}
+
+function Extrair-Dados-Comuns {
+    $folderPath = Escolher-Pasta
+    if (-Not $folderPath) { return }
+    $htmlFiles = Get-ChildItem -Path $folderPath -Filter "*.html"
+    if ($htmlFiles.Count -eq 0) {
+        Write-Host "⚠️ Nenhum arquivo HTML encontrado na pasta."
+        Pause; return
+    }
+    $saida = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "dados_extraidos_web.txt"
+    Remove-Item $saida -ErrorAction SilentlyContinue
+    foreach ($file in $htmlFiles) {
+        Write-Host "`n🔍 Lendo: $($file.Name)"
+        Add-Content -Path $saida -Value "===== $($file.Name) ====="
+        $conteudo = Get-Content $file.FullName -Raw -Encoding UTF8
+
+        # Nomes
+        $nomes = Select-String -InputObject $conteudo -Pattern '"name"\s*:\s*"([^"]+)"' -AllMatches
+        foreach ($n in $nomes.Matches) {
+            Add-Content -Path $saida -Value "👤 Nome: $($n.Groups[1].Value)"
+        }
+
+        # Emails
+        $emails = Select-String -InputObject $conteudo -Pattern '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b' -AllMatches
+        foreach ($e in $emails.Matches) {
+            Add-Content -Path $saida -Value "📧 Email: $($e.Value)"
+        }
+
+        # Imagens
+        $imgs = Select-String -InputObject $conteudo -Pattern 'https?://[^"]+\.(jpg|jpeg|png|gif)' -AllMatches
+        foreach ($i in $imgs.Matches) {
+            Add-Content -Path $saida -Value "🖼️ Imagem: $($i.Value)"
+        }
+
+        # Datas
+        $datas = Select-String -InputObject $conteudo -Pattern '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' -AllMatches
+        foreach ($d in $datas.Matches) {
+            Add-Content -Path $saida -Value "📅 Data: $($d.Value)"
+        }
+
+        # Links
+        $links = Select-String -InputObject $conteudo -Pattern 'https?://[^\s"]+' -AllMatches
+        foreach ($l in $links.Matches) {
+            Add-Content -Path $saida -Value "🔗 Link: $($l.Value)"
+        }
+
+        Add-Content -Path $saida -Value "`n"
+    }
+    Write-Host "`n✅ Dados extraídos para: $saida" -ForegroundColor Green
+    Pause
+}
+
+# LOOP PRINCIPAL
+while ($true) {
+    Mostrar-Menu
+    $opcao = Read-Host "`n👉 Escolhe uma opção (1-5)"
+    switch ($opcao) {
+        "1" { Extrair-JSON-Valido }
+        "2" { Extrair-JSON-Possivel }
+        "3" { Procurar-Dados }
+        "4" { Extrair-Dados-Comuns }
+        "5" {
+            Write-Host "`n👋 A sair... Até logo!"
+            break
+        }
+        default {
+            Write-Host "❌ Opção inválida. Tenta de novo." -ForegroundColor Red
+            Pause
+        }
+    }
+}
